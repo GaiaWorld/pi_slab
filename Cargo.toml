@@ -1,8 +1,9 @@
 [package]
 name = "pi_slab"
 version = "0.1.0"
-authors = ["suncy <suncy@gmail.com>"]
-edition = "2018"
-
-[dependencies]
-pi_time = {path="../pi_time"}
+authors = ["suncy <530739162@qq.com>"]
+edition = "2021"
+description = "slab"
+repository = "https://github.com/GaiaWorld/pi_slab.git"
+license = "MIT OR Apache-2.0"
+keywords = ["pi", "slab", "pi_slab"]

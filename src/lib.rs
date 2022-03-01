@@ -1,3 +1,4 @@
+//! slab
 
 #![allow(warnings)]
 
@@ -129,35 +130,36 @@ impl<T> Slab<T> {
     }
 
     pub fn get(&self, key: usize) -> Option<&T> {
-        if key == usize::max_value() || key > self.entries.len() || self.is_one(key){
+        if key == 0 || key > self.entries.len() || self.is_one(key - 1){
             return None;
         }
-        return Some(&self.entries[key]);
+        return Some(&self.entries[key - 1]);
     }
 
     pub fn get_mut(&mut self, key: usize) -> Option<&mut T> {
-        if key == usize::max_value() || key > self.entries.len() || self.is_one(key){
+        if key == 0 || key > self.entries.len() || self.is_one(key - 1){
             return None;
         }
-        return Some(&mut self.entries[key])
+        return Some(&mut self.entries[key - 1])
         
     }
 
     pub unsafe fn get_unchecked(&self, key: usize) -> &T {
-        return &self.entries[key];
+        return &self.entries[key - 1];
     }
 
     pub unsafe fn get_unchecked_mut(&mut self, key: usize) -> &mut T {
-        return &mut self.entries[key];
+        return &mut self.entries[key - 1];
     }
 
     pub fn alloc_with_is_first(&mut self) -> (usize, &mut T, bool){
-        let key = self.next;
+        let key = self.next + 1;
         let r = self.alloc_with_is_first_at(key);
         (key, r.0, r.1)
     }
 
     pub fn alloc_with_is_first_at(&mut self, key: usize) -> (&mut T, bool) {
+        let key = key - 1;
         let len = self.entries.len();
         self.len += 1;
         let t = if key == len {
@@ -168,7 +170,7 @@ impl<T> Slab<T> {
             self.next = key + 1;
             let s_index = key%usize_size();
             if s_index == 0{
-                self.vacancy_sign.push(usize::max_value());
+                self.vacancy_sign.push(usize::max_value() - 1);
             }else {
                 one2zero(&mut self.vacancy_sign[key/usize_size()], s_index);
             }
@@ -182,11 +184,12 @@ impl<T> Slab<T> {
     }
 
     pub fn alloc(&mut self) -> (usize, &mut T){
-        let key = self.next;
+        let key = self.next + 1;
         (key, self.alloc_at(key))
     }
 
     pub fn alloc_at(&mut self, key: usize) -> &mut T {
+        let key = key - 1;
         let len = self.entries.len();
         self.len += 1;
         let t = if key == len {
@@ -211,12 +214,13 @@ impl<T> Slab<T> {
     }
 
     pub fn insert(&mut self, val: T) -> usize {
-        let key = self.next;
+        let key = self.next + 1;
         self.insert_at(key, val);
         key
     }
 
     pub fn insert_at(&mut self, key: usize, val: T) {
+        let key = key - 1;
         if key == self.entries.len() {
             self.entries.push(val);
             self.next = key + 1;
@@ -236,20 +240,21 @@ impl<T> Slab<T> {
     }
 
     pub fn remove(&mut self, key: usize) -> T {
-        let r: T = unsafe{ transmute_copy(&self.entries[key]) };
-        unsafe{*(&mut self.entries[key] as *mut T as usize as *mut usize) = self.next };
-        self.next = key;
-        self.zero2one(key);
+        let key1 = key - 1;
+        let r: T = unsafe{ transmute_copy(&self.entries[key1]) };
+        unsafe{*(&mut self.entries[key1] as *mut T as usize as *mut usize) = self.next };
+        self.next = key1;
+        self.zero2one(key1);
         self.len -= 1;
         r
     }
 
     pub unsafe fn replace(&mut self, key: usize, value: T) -> T {
-        replace(&mut self.entries[key], value)
+        replace(&mut self.entries[key - 1], value)
     }
 
     pub fn contains(&self, key: usize) -> bool {
-        if key == usize::max_value() || key >= self.entries.len() || self.is_one(key) {
+        if key == 0 || key > self.entries.len() || self.is_one(key - 1) {
             false
         } else{
             true
@@ -368,13 +373,13 @@ impl<T> Index<usize> for Slab<T> {
     type Output = T;
 
     fn index(&self, key: usize) -> &T {
-        &self.entries[key]
+        &self.entries[key - 1]
     }
 }
 
 impl<T> IndexMut<usize> for Slab<T> {
     fn index_mut(&mut self, key: usize) -> &mut T {
-        &mut self.entries[key]
+        &mut self.entries[key - 1]
     }
 }
 
@@ -462,13 +467,13 @@ impl<'a, T> Iterator for SlabIter<'a, T> {
         let sign_index = self.curr_index/usize_size();
         let mut sign_index1 = self.curr_index%usize_size();
         for i in sign_index..self.signs.len(){
-            let sign = self.signs[i].clone() >> sign_index1;
+            let sign = self.signs[i].clone() >> sign_index1;       
             if sign != usize::max_value() >> sign_index1{
                 let first_zero = find_zero(sign);
                 let curr = self.curr_index + first_zero;
                 self.curr_index = curr + 1;
                 self.curr_len += 1;
-                return Some((curr, &self.entries[curr]));
+                return Some((curr + 1, &self.entries[curr]));
             }else {
                 self.curr_index += usize_size() - sign_index1;
                 sign_index1 = 0;
@@ -496,7 +501,7 @@ impl<'a, T> Iterator for SlabIterMut<'a, T> {
                 let curr = self.curr_index + first_zero;
                 self.curr_index = curr + 1;
                 self.curr_len += 1;
-                return Some((curr, unsafe{&mut (*self.entries)[curr]} ));
+                return Some((curr + 1, unsafe{&mut (*self.entries)[curr]} ));
             }else {
                 self.curr_index += usize_size() - sign_index1;
                 sign_index1 = 0;
@@ -532,9 +537,6 @@ fn find_zero(i:usize) -> usize {
 	let a = !i;
     a.trailing_zeros() as usize
 }
-
-#[cfg(test)]
-extern crate time;
 
 #[test]
 fn test(){
@@ -640,44 +642,44 @@ fn test_alloc(){
 
 #[test]
 fn test_eff(){
-    use time::now_millisecond;
+	use std::time::Instant;
     let mut slab: Slab<u64> = Slab::new();
-    let time = now_millisecond();
+    let time = Instant::now();
     for i in 0..1000000{
         let r = slab.alloc();
         *r.1 = i;
     }
-    println!("alloc time-----------------------------------------------{}", now_millisecond() - time);
+    println!("alloc time-----------------------------------------------{:?}", Instant::now() - time);
     let mut slab: Slab<u64> = Slab::new();
-    let time = now_millisecond();
+    let time = Instant::now();
     for i in 0..1000000{
         slab.insert(i);
     }
-    let time1 = now_millisecond();
-    println!("insert time-----------------------------------------------{}", time1 - time);
+    let time1 = Instant::now();
+    println!("insert time-----------------------------------------------{:?}", time1 - time);
 
     for i in 1..1000001{
         slab.remove(i);
     }
-    let time2 = now_millisecond();
-    println!("remove time-----------------------------------------------{}", time2 - time1);
+    let time2 = Instant::now();
+    println!("remove time-----------------------------------------------{:?}", time2 - time1);
 
-    let time = now_millisecond();
+    let time = Instant::now();
     for i in 0..1000000{
         slab.insert(i);
     }
-    let time1 = now_millisecond();
-    println!("insert1 time-----------------------------------------------{}", time1 - time);
+    let time1 = Instant::now();
+    println!("insert1 time-----------------------------------------------{:?}", time1 - time);
 
     let mut v = Vec::new();
 
-    let time3 = now_millisecond();
+    let time3 = Instant::now();
     for i in 1..1000001{
         v.push(i);
     }
 
-    let time4 = now_millisecond();
-    println!("insert vec time-----------------------------------------------{}", time4 - time3);
+    let time4 = Instant::now();
+    println!("insert vec time-----------------------------------------------{:?}", time4 - time3);
 }
 
 // #[test]
